@@ -1,0 +1,133 @@
+---
+title: "DEA"
+author: "Sicheng Xu"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+knitr::opts_chunk$set(fig.width = 8,fig.height = 6,collapse = TRUE)
+knitr::opts_chunk$set(message = FALSE,warning = FALSE)
+```
+
+```{r}
+timestamp()
+rm(list = ls())
+proj = "TCGA-UCEC"
+```
+
+```{r}
+load("TCGA-UCEC.Rdata")
+table(Group)
+#deseq2----
+library(DESeq2)
+colData <- data.frame(row.names =colnames(exp), 
+                      condition=Group)
+#注意事项:如果多次运行，表达矩阵改动过的话，需要从工作目录下删除下面if括号里的文件
+if(!file.exists(paste0(proj,"_dd.Rdata"))){
+  dds <- DESeqDataSetFromMatrix(
+  countData = exp,
+  colData = colData,
+  design = ~ condition)
+  dds <- DESeq(dds)
+  save(dds,file = paste0(proj,"_dd.Rdata"))
+}
+load(file = paste0(proj,"_dd.Rdata"))
+class(dds)
+res <- results(dds, contrast = c("condition",rev(levels(Group))))
+#constrast
+c("condition",rev(levels(Group)))
+class(res)
+DEG1 <- as.data.frame(res)
+library(dplyr)
+DEG1 <- arrange(DEG1,pvalue)
+DEG1 = na.omit(DEG1)
+head(DEG1)
+
+#添加change列标记基因上调下调
+logFC_t = 2
+pvalue_t = 0.05
+
+k1 = (DEG1$pvalue < pvalue_t)&(DEG1$log2FoldChange < -logFC_t);table(k1)
+k2 = (DEG1$pvalue < pvalue_t)&(DEG1$log2FoldChange > logFC_t);table(k2)
+DEG1$change = ifelse(k1,"DOWN",ifelse(k2,"UP","NOT"))
+table(DEG1$change)
+head(DEG1)
+save(DEG1, file = paste0(proj,"_DEG.Rdata"))
+```
+
+```{r}
+library(RColorBrewer)
+library(ggrepel)
+library(ggplot2)
+
+# 首先筛选显著差异表达的基因
+sig_genes <- DEG1[DEG1$pvalue < 0.05 & abs(DEG1$log2FoldChange) >= 1, ]
+
+# 按p值排序（从小到大），然后按log2FoldChange绝对值排序（从大到小）
+sig_genes$score <- -log10(sig_genes$pvalue) * abs(sig_genes$log2FoldChange)
+top50_genes <- sig_genes[order(-sig_genes$score), ][1:50, ]
+top50_genes$gene <- rownames(top50_genes)
+
+DEG1$change = factor(ifelse(DEG1$pvalue  < 0.05 & abs(DEG1$log2FoldChange) >= 1, 
+                               ifelse(DEG1$log2FoldChange >= 1 ,'UP','DOWN'),'NOT'),
+                        levels=c('UP','DOWN','NOT'))
+DEG1$gene <- row.names(DEG1) #添加一列基因名，以便备注
+ggplot(DEG1,aes(x=log2FoldChange,y= -log10(pvalue),color=change))+
+  geom_point(data = DEG1[DEG1$pvalue<0.05&abs(DEG1$log2FoldChange)>1,],size = 5)+ 
+  geom_point(data = DEG1[DEG1$pvalue>0.05|abs(DEG1$log2FoldChange)<1,],size = 4)+
+  scale_color_manual(values=c("#FC4E2A","#4393C3","#00000033"))+#确定点的颜色
+  geom_text_repel(
+    data = top50_genes,
+    aes(label = gene),
+    size = 4.5,
+    color = "black",
+    segment.color = "black", show.legend = FALSE,
+    max.overlaps = 50)+#添加关注的点的基因名
+  ylab('-log10 (pvalue)')+#修改y轴名称
+  xlab('log2 (FoldChange)')+#修改x轴名称
+  geom_vline(xintercept=c(-1,1),lty=3,col="black",lwd=0.5) +#添加横线|logFoldChange|>1
+  geom_hline(yintercept = -log10(0.05),lty=3,col="black",lwd=0.5) +#添加竖线padj<0.05
+  theme_classic(  # 主题设置，这个是无线条主题
+    base_line_size = 1 # 坐标轴的粗细
+  )+
+  theme(axis.title.x = element_text(size = 15, 
+                                    color = "black",
+                                    face = "bold"),
+        axis.title.y = element_text(size = 15,
+                                    color = "black",
+                                    face = "bold", 
+                                    vjust = 1.9, 
+                                    hjust = 0.5, 
+                                    angle = 90),
+        legend.title = element_blank(),
+        legend.text = element_text(color="black", # 设置图例标签文字
+                                   size = 10, 
+                                   face = "bold"),
+        axis.text.x = element_text(size = 13,  # 修改X轴上字体大小，
+                                   color = "black", # 颜色
+                                   face = "bold", #  face取值：plain普通，bold加粗，italic斜体，bold.italic斜体加粗
+                                   vjust = 0.5, # 位置
+                                   hjust = 0.5, 
+                                   angle = 0), #角度
+        axis.text.y = element_text(size = 13,  
+                                   color = "black",
+                                   face = "bold", 
+                                   vjust = 0.5, 
+                                   hjust = 0.5, 
+                                   angle = 0) 
+  )
+
+# 保存图片
+ggsave(filename = paste0(proj,"_n_over25_volcano_plot.tiff"), 
+       compression = "lzw", dpi = 300, width = 10, height = 8, units = "in")
+```
+
+```{r}
+timestamp()
+```
+

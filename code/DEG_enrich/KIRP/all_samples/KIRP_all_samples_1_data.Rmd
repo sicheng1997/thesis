@@ -1,0 +1,90 @@
+---
+title: "1.data"
+author: "Sicheng Xu"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+knitr::opts_chunk$set(fig.width = 6,fig.height = 6,collapse = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+### 1.起个项目名字
+
+TCGA的数据，统一叫TCGA-xxxx，非TCGA的数据随意起名，不要有特殊字符即可。
+
+```{r}
+timestamp()
+rm(list = ls())
+proj = "TCGA-KIRP"
+```
+
+### 2.读取和整理数据
+
+### 2.1 表达矩阵
+
+```{r}
+library(SummarizedExperiment)
+load("~/Rproject/TCGA/TCGA-KIRP/TCGA-KIRP_data.Rdata")
+exp = assay(exp)
+```
+
+#### 2.2 临床信息
+
+```{r}
+Clinical = read.csv("~/Project/data_output/Clinical.csv")
+clinical = Clinical[Clinical$disease == "KIRP",]
+clinical[1:4,1:4]
+```
+
+### 3.表达矩阵行名ID转换
+
+```{r}
+library(tinyarray)
+exp = trans_exp_new(exp)
+exp[1:4,1:4]
+```
+
+### 4.基因过滤
+
+需要过滤一下那些在很多样本里表达量都为0或者表达量很低的基因。过滤标准不唯一。
+
+过滤之前基因数量：
+
+```{r}
+nrow(exp)
+```
+
+#### 常用过滤标准(推荐)：
+
+仅保留在一半以上样本里表达的基因
+
+```{r}
+exp = exp[apply(exp, 1, function(x) sum(x > 0) > 0.5*ncol(exp)), ]
+nrow(exp)
+```
+
+### 5.分组信息获取
+
+TCGA的数据，直接用make_tcga_group给样本分组（tumor和normal），其他地方的数据分组方式参考芯片数据pipeline/02_group_ids.R
+
+```{r}
+library(tinyarray)
+Group = make_tcga_group(exp)
+table(Group)
+```
+
+### 6.保存数据
+
+```{r}
+save(exp,Group,proj,clinical,file = paste0(proj,".Rdata"))
+timestamp()
+```
+
