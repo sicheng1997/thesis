@@ -1,0 +1,54 @@
+---
+title: "Barplot"
+author: "Sicheng Xu"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.path = "images/",
+  dev ="tiff",
+  dpi = 300,
+  fig.width = 11,
+  fig.height = 9,
+  fig.show = "hide"
+  )
+```
+
+```{r}
+timestamp()
+```
+
+## 载入包和数据
+```{r}
+rm(list = ls())
+library(dplyr)
+library(ggplot2)
+Clinical = read.csv("data_output/Clinical.csv")
+BMI_stats = Clinical %>%
+  group_by(disease) %>%
+  mutate(proportion = round(sum(BMI >= 25) / n() * 100)) %>%
+  arrange(proportion) 
+```
+
+## 绘制条形图
+```{r barplot}
+ggplot(BMI_stats,aes(reorder(disease,proportion),fill=BMI_group))+ 
+  geom_bar(position = "fill")+ 
+  theme_classic()+ 
+  coord_flip()+ 
+  theme(text = element_text(size = 20, face = 'bold'), 
+        axis.title = element_blank(),
+        plot.title = element_text(hjust = 0.5))+ 
+  scale_fill_manual(values = c("#D85356","#D7AA36","#94BBAD"))+ 
+  geom_hline(yintercept = 0.5,color='red',linetype=2,size=1.5)
+```
+
+```{r}
+timestamp()
+```
+
