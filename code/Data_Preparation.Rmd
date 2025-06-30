@@ -1,0 +1,124 @@
+---
+title: "Data Preparation"
+author: "Sicheng Xu"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+timestamp()
+```
+
+## data preparation
+
+```{r}
+rm(list = ls())
+library(tidyverse)
+projs <- c("TCGA-ACC","TCGA-BLCA","TCGA-BRCA","TCGA-CESC","TCGA-CHOL","TCGA-COAD",
+           "TCGA-DLBC","TCGA-ESCA","TCGA-GBM","TCGA-HNSC","TCGA-KICH","TCGA-KIRC",
+           "TCGA-KIRP","TCGA-LAML","TCGA-LGG","TCGA-LIHC","TCGA-LUAD","TCGA-LUSC",
+           "TCGA-MESO","TCGA-OV","TCGA-PAAD","TCGA-PCPG","TCGA-PRAD","TCGA-READ",
+           "TCGA-SARC","TCGA-SKCM","TCGA-STAD","TCGA-TGCT","TCGA-THCA","TCGA-THYM",
+           "TCGA-UCEC","TCGA-UCS","TCGA-UVM")
+projs_BMI <- c("TCGA-BLCA","TCGA-CESC","TCGA-CHOL","TCGA-COAD","TCGA-DLBC",
+               "TCGA-ESCA","TCGA-KIRP","TCGA-LIHC","TCGA-READ","TCGA-SKCM",
+               "TCGA-THYM","TCGA-UCEC","TCGA-UCS","TCGA-UVM")
+BMI_index <- grep(paste0("TCGA-BLCA|TCGA-CESC|TCGA-CHOL|TCGA-COAD|TCGA-DLBC|",
+                         "TCGA-ESCA|TCGA-KIRP|TCGA-LIHC|TCGA-READ|TCGA-SKCM|",
+                         "TCGA-THYM|TCGA-UCEC|TCGA-UCS|TCGA-UVM"), 
+                  projs)
+
+common_sample <- map(projs, ~{
+  proj = .x
+  load(paste0("~/Rproject/TCGA/",proj,"/",proj,"_data.Rdata"))
+  cli_patient <- unique(clinical$submitter_id.samples)
+  exp_patient <- unique(str_sub(colnames(exp),1,16))
+  meta_patient <- unique(meta$sample)
+  SNV_patient <- unique(str_sub(SNV$Tumor_Sample_Barcode,1,16))
+  CNV_patient <- unique(str_sub(CNV$Sample,1,16))
+  Met_patient <- unique(str_sub(Met$sample,1,16))
+  Reduce(intersect, list(cli_patient, exp_patient, meta_patient, SNV_patient, 
+                         CNV_patient, Met_patient))
+})
+names(common_sample) <- projs
+save(common_sample, file = "data/intermediate/Multiomics_common_samples.Rdata")
+
+BMI_common_samples <- common_sample[BMI_index]
+
+common_patient <- map(projs, ~{
+  proj = .x
+  load(paste0("~/Rproject/TCGA/",proj,"/",proj,"_data.Rdata"))
+  cli_patient <- unique(clinical$submitter_id)
+  exp_patient <- unique(str_sub(colnames(exp),1,12))
+  meta_patient <- unique(meta$X_PATIENT)
+  SNV_patient <- unique(str_sub(SNV$Tumor_Sample_Barcode,1,12))
+  CNV_patient <- unique(str_sub(CNV$Sample,1,12))
+  Met_patient <- unique(str_sub(Met$sample,1,12))
+  Reduce(intersect, list(cli_patient, exp_patient, meta_patient, SNV_patient, 
+                         CNV_patient, Met_patient))
+})
+names(common_patient) <- projs
+save(common_patient, file = "data/intermediate/Multiomics_common_patient.Rdata")
+
+BMI_common_patient <- common_patient[BMI_index]
+Clinical <- map(projs_BMI, ~{
+  clinical <- read.delim(paste0("~/Project/data/clinical/",.x,".htseq_counts.tsv.gz"),
+                         fill = T,header = T,sep = "\t")
+  clinical %>%
+  select(id = submitter_id.samples, disease = disease_code, BMI = bmi.exposures,
+         weight = weight.exposures, height = height.exposures,
+         gender = gender.demographic, age = age_at_initial_pathologic_diagnosis) %>%
+  filter(id %in% BMI_common_samples[[.x]] & BMI > 18.5 & height > 100) %>%
+  mutate(gender = na_if(gender,""),
+         age_group = case_when(age <= 40 ~ "Below 40",
+                               age > 40&age <= 60 ~ "40-60",
+                               TRUE ~ "Over 60"),
+         BMI_group = case_when(BMI < 25 ~ "18.5-25",
+                               BMI >= 25 & BMI < 30 ~ "25-30",
+                               BMI >= 30 ~ "Over 30"),
+         gender = factor(gender,levels = c("male","female")),
+         age_group = factor(age_group, levels = c("Below 40", "40-60", "Over 60")),
+         BMI_group = factor(BMI_group, levels = c("18.5-25", "25-30", "Over 30")))%>%
+  drop_na() %>%
+  distinct(id, .keep_all = TRUE)
+}) 
+Clinical <- do.call(rbind,Clinical)
+write.csv(Clinical,file = "data_output/Clinical.csv",row.names = F)
+
+BMI <- numeric(14)
+for (i in seq_along(projs_BMI)) {
+  load(paste0("~/Rproject/TCGA/",projs_BMI[i],"/",projs_BMI[i],"_data.Rdata"))
+  clinical <- clinical[clinical$submitter_id %in% BMI_common_patient[[i]],]
+  clinical$weight[clinical$weight == ""] <- NA
+  clinical$height[clinical$height == ""] <- NA
+  BMI_common_patient[[i]] <- clinical$submitter_id[which(!is.na(clinical$weight) & !is.na(clinical$height))]
+  BMI[i] <- length(BMI_common_patient[[i]])
+}
+BMI1 <- numeric(33)
+BMI1[BMI_index] <- BMI
+
+TCGA_patient <- map(projs, ~{
+  proj = .x
+  load(paste0("~/Rproject/TCGA/",proj,"/",proj,"_data.Rdata"))
+  data.frame(clinical = length(unique(clinical$submitter_id)),
+             meta = length(unique(meta$X_PATIENT)),
+             exp = length(unique(str_sub(colnames(exp),1,12))),
+             SNV = length(unique(str_sub(SNV$Tumor_Sample_Barcode,1,12))),
+             CNV = length(unique(str_sub(CNV$Sample,1,12))),
+             Met = length(unique(str_sub(Met$sample,1,12))),
+             common = length(common_patient[[proj]]),
+             BMI = BMI1[grep(proj,projs)])
+})
+TCGA_patient <- do.call(rbind,TCGA_patient)
+rownames(TCGA_patient) <- projs
+write.csv(TCGA_patient,file = "data_output/TCGA_patient.csv")
+```
+
+```{r}
+timestamp()
+```
+
