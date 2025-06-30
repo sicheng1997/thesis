@@ -1,0 +1,63 @@
+---
+title: "Metabolic Geneset Extraction"
+author: "Sicheng Xu"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+timestamp()
+```
+
+## Extract Human metabolic geneset
+
+'Human metabolic genes list.xlsx' : This file include Human metabolic genes.
+
+```{r}
+library(openxlsx)
+Human_Metabolic_Geneset <- read.xlsx("~/Project/data/Human metabolic genes list.xlsx")
+Human_Metabolic_Geneset <- Human_Metabolic_Geneset$Gene.Symbol
+geneName_reference <- read.delim("~/Project/data/geneName_reference.txt", header = F)
+Human_Metabolic_Geneset <- unique(Human_Metabolic_Geneset[Human_Metabolic_Geneset %in% geneName_reference$V1])
+save(Human_Metabolic_Geneset, file = "~/Project/data/Human_Metabolic_Geneset.Rdata")
+writeLines(Human_Metabolic_Geneset, con = "data_output/Human_Metabolic_Geneset.txt")
+```
+
+## Extract GWAS geneset
+
+'gwas_bmi.tsv' and 'gwas_body_fat_percentage.tsv': These files include the genes
+ related to the abnormal expression of metabolism in GWAS studies. They can be downloaded from GWAS Catalog. A screenshot is listed below to show the steps.
+
+```{r}
+knitr::include_graphics(c("~/Project/images/GWAS_Geneset1.png",
+                          "~/Project/images/GWAS_Geneset2.png"))
+```
+
+```{r}
+GWAS_BMI <- read.table("~/Project/data/GWAS_BMI.tsv", header = T, sep = "\t", fill = T,
+                       na.strings = c(""," "))
+GWAS_BFP <- read.table("~/Project/data/GWAS_Body_Fat_Percentage.tsv", header = T, 
+                       sep = "\t", fill = T, na.strings = c("", " "))
+GWAS <- rbind(GWAS_BMI,GWAS_BFP)
+GWAS_geneset <- GWAS$MAPPED_GENE[GWAS$MAPPED_GENE != ""]
+GWAS_geneset <- unique(unlist(strsplit(GWAS_geneset,split = " - |, ")))
+GWAS_geneset <- GWAS_geneset[GWAS_geneset %in% geneName_reference$V1]
+save(GWAS_geneset, file = "~/Project/data/GWAS_Geneset.Rdata")
+write.table(GWAS,file = "~/Project/data_output/GWAS_geneset.tsv", quote = F,sep = "\t",row.names = F)
+writeLines(GWAS_geneset, con = "data_output/GWAS_geneset.txt")
+```
+
+## Screen for overlapping genes
+```{r}
+BMI_Metabolic_Genes = intersect(GWAS_geneset, Human_Metabolic_Geneset)
+writeLines(BMI_Metabolic_Genes, con = "data_output/BMI_Metabolic_Genes.txt")
+```
+
+```{r}
+timestamp()
+```
+
