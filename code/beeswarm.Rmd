@@ -1,0 +1,96 @@
+---
+title: "beeswarm"
+author: "Sicheng Xu"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+  )
+```
+
+```{r}
+timestamp()
+```
+
+
+```{r}
+Clinical <- read.csv("data_output/Clinical.csv")
+library(ggbeeswarm)
+library(tidyverse)
+ggplot(Clinical, aes(disease,BMI))+
+  geom_beeswarm(cex = .5,alpha=.8,color="steelblue")+
+  theme_classic()+
+  theme(text = element_text(size = 15,face = "bold"),
+        axis.text.x = element_text(angle = 90, face = "bold.italic"),
+        plot.title = element_text(hjust = 0.5))+
+  scale_y_continuous(breaks = seq(0,100,by=10))+
+  geom_hline(yintercept = 25, color="yellow", linetype=2, size=1.5)
+ggsave("images/beeswarm.tiff",width = 10,height = 7,units = "in",dpi = 300,
+       compression = "lzw")
+# grouped by gender
+gbg <- function(plot){
+  p <- ggplot_build(plot)
+  p$data[[1]] <- p$data[[1]] %>%
+    mutate(diff = abs(x-round(x)),
+           x = case_when(group %% 2 == 0 ~ round(x) + diff,
+                         TRUE ~ round(x) - diff)) %>%
+    select(-diff)
+  plot(ggplot_gtable(p))
+  return(ggplot_gtable(p))
+}
+p <- ggplot(Clinical, aes(disease,BMI,color=gender))+
+  geom_beeswarm(cex = .5)+
+  theme_classic()+
+  theme(text = element_text(size = 15,face = "bold"),
+        axis.text.x = element_text(angle = 90, face = "bold.italic"),
+        plot.title = element_text(hjust = 0.5))+
+  scale_y_continuous(breaks = seq(0,100,by=10))+
+  geom_hline(yintercept = 25, color="yellow", linetype=2, size=1.5)+
+  scale_color_brewer(palette = "Set1")
+p
+gbg(p)
+ggsave("images/beeswarm_gbg.tiff",plot = gbg(p),width = 10,height = 7,
+       units = "in",dpi = 300, compression = "lzw")
+# grouped by age
+gba <- function(plot){
+  p <- ggplot_build(plot)
+  p$data[[1]] <- p$data[[1]] %>%
+    mutate(diff = abs(x-round(x)+0.2),
+           x = case_when(colour == "#1F77B4" ~ round(x) - diff,
+                         colour == "#D62728" ~ round(x) + diff,
+                         TRUE ~ x)) %>%
+    select(-diff)
+  plot(ggplot_gtable(p))
+  return(ggplot_gtable(p))
+}
+
+p <- Clinical %>%
+  mutate(age_group = case_when(age <= 40 ~ "age ≤ 40 years",
+                               age > 40&age <= 60 ~ "40 years < age ≤ 60 years",
+                               TRUE ~ "age > 60 years")) %>%
+  ggplot(aes(disease,BMI,color=age_group))+
+  geom_beeswarm(cex = .5)+
+  theme_classic()+
+  theme(text = element_text(size = 15,face = "bold"),
+        axis.text.x = element_text(angle = 90, face = "bold.italic"),
+        plot.title = element_text(hjust = 0.5))+
+  scale_y_continuous(breaks = seq(0,100,by=10))+
+  geom_hline(yintercept = 25, color="yellow", linetype=2, size=1.5)+
+  scale_color_manual(values = c("#1F77B4","#2CA02C","#D62728"),
+                     breaks = c("age ≤ 40 years", "40 years < age ≤ 60 years",
+                                "age > 60 years"))
+p
+gba(p)
+ggsave("images/beeswarm_gba.tiff",plot = gba(p),width = 15,height = 7,
+       units = "in",dpi = 300,compression = "lzw")
+```
+
+```{r}
+timestamp()
+```
+
