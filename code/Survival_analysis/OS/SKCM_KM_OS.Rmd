@@ -1,0 +1,73 @@
+---
+title: "SKCM KM-plot"
+author: "Sicheng Xu"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  dev = "tiff",
+  dpi = 300,
+  fig.width = 10,
+  fig.height = 6,
+  fig.path = "images/")
+```
+
+```{r}
+timestamp()
+```
+
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(survival)
+library(survminer)
+proj = "TCGA-SKCM"
+setwd("~/Project")
+library(stringr)
+Clinical = read.csv("data_output/Clinical.csv")
+Clinical$id = str_sub(Clinical$id,1,12)
+clinical <- Clinical %>%
+  filter(disease == strsplit(proj,split="-")[[1]][2])
+surv <- read.delim(paste0("data/survival/",proj,".htseq_counts.tsv.gz"),
+                   header = T) 
+surv <- surv %>%
+  filter(X_PATIENT %in% clinical$id) %>%
+  distinct(X_PATIENT,.keep_all = TRUE)
+meta <- left_join(clinical,surv,by=c("id"="X_PATIENT"))
+colnames(meta)[11:12] <- c("event","time")
+```
+
+```{r SKCM-KM-3group}
+sfit <- survfit(Surv(time, event)~BMI_group, data = meta)
+ggsurvplot(sfit,
+           pval = TRUE,
+           legend.title = "BMI",
+           legend.labs = c("18.5-25","25-30","Over 30"),
+           risk.table = TRUE,
+           palette = c("#94BBAD","#D7AA36","#D85356"),
+           xlab = "Time(day)"
+           )
+```
+
+```{r SKCM-KM-2group}
+meta$BMI_group = ifelse(meta$BMI < 25,"18.5-25","Over 25")
+sfit <- survfit(Surv(time, event)~BMI_group, data = meta)
+ggsurvplot(sfit,
+           pval = TRUE,
+           legend.title = "BMI",
+           legend.labs = c("18.5-25","Over 25"),
+           risk.table = TRUE,
+           palette = c("blue","red"),
+           xlab = "Time(day)"
+           )
+```
+
+```{r}
+timestamp()
+```
+

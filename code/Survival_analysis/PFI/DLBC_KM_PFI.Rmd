@@ -1,0 +1,73 @@
+---
+title: "DLBC KM-plot"
+author: "Sicheng Xu"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  dev = "tiff",
+  dpi = 300,
+  fig.width = 10,
+  fig.height = 6,
+  fig.path = "fig_output/")
+```
+
+```{r}
+timestamp()
+```
+
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(survival)
+library(survminer)
+library(openxlsx)
+proj = "TCGA-DLBC"
+
+library(stringr)
+Clinical = read.csv("~/Project/data_output/Clinical.csv")
+Clinical$id = str_sub(Clinical$id,1,12)
+clinical <- Clinical %>%
+  filter(disease == strsplit(proj,split="-")[[1]][2])
+surv <- read.xlsx("~/Project/data/mmc1.xlsx", sheet = "ExtraEndpoints")
+surv <- surv %>%
+  filter(bcr_patient_barcode %in% clinical$id) %>%
+  distinct(bcr_patient_barcode,.keep_all = TRUE)
+meta <- left_join(clinical,surv,by=c("id"="bcr_patient_barcode"))
+colnames(meta)[12:13] <- c("event","time")
+```
+
+```{r DLBC-KM-PFI-3group}
+sfit <- survfit(Surv(time, event)~BMI_group, data = meta)
+ggsurvplot(sfit,
+           pval = TRUE,
+           legend.title = "BMI",
+           legend.labs = c("18.5-25","25-30","Over 30"),
+           risk.table = TRUE,
+           palette = c("#94BBAD","#D7AA36","#D85356"),
+           xlab = "Time(day)"
+           )
+```
+
+```{r DLBC-KM-PFI-2group}
+meta$BMI_group = ifelse(meta$BMI < 25,"18.5-25","Over 25")
+sfit <- survfit(Surv(time, event)~BMI_group, data = meta)
+ggsurvplot(sfit,
+           pval = TRUE,
+           legend.title = "BMI",
+           legend.labs = c("18.5-25","Over 25"),
+           risk.table = TRUE,
+           palette = c("blue","red"),
+           xlab = "Time(day)"
+           )
+```
+
+```{r}
+timestamp()
+```
+
