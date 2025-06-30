@@ -1,0 +1,149 @@
+---
+title: "oncoplot"
+author: "Xu Sicheng"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  dev = "tiff",
+  dpi = 300,
+  fig.width = 10,
+  fig.height = 7,
+  fig.path = "fig_output/")
+```
+
+```{r}
+timestamp()
+rm(list = ls())
+library(maftools)
+library(dplyr)
+```
+加载TCGA-BLCA.Rdata数据
+```{r}
+load("TCGA-BLCA_data.Rdata")
+```
+
+提取 clinical 数据和 snv_data 数据
+```{r}
+clinical_data <- clinical
+snv_data_table <- SNV
+```
+
+选择临床数据中的必要列：height, weight, days_to_birth, gender
+```{r}
+library(stringr)
+clinical_selected <- clinical_data %>%
+  select(submitter_id.samples, height.exposures, weight, days_to_birth.demographic, gender.demographic) %>%
+  mutate(
+    id = str_sub(submitter_id.samples,1,12),
+    height = as.numeric(height.exposures),
+    weight = as.numeric(weight),
+    days_to_birth = as.numeric(days_to_birth.demographic),
+    gender = factor(gender.demographic, levels = c("MALE", "FEMALE"))
+  )
+```
+
+处理缺失值：用中位数填充 height, weight, days_to_birth，用众数填充 gender
+```{r}
+clinical_selected$height[is.na(clinical_selected$height)] <- median(clinical_selected$height, na.rm = TRUE)
+clinical_selected$weight[is.na(clinical_selected$weight)] <- median(clinical_selected$weight, na.rm = TRUE)
+clinical_selected$days_to_birth[is.na(clinical_selected$days_to_birth)] <- median(clinical_selected$days_to_birth, na.rm = TRUE)
+clinical_selected$gender[is.na(clinical_selected$gender)] <- names(sort(table(clinical_selected$gender), decreasing = TRUE))[1]
+```
+
+计算BMI和age
+```{r}
+clinical_selected$BMI <- clinical_selected$weight / ((clinical_selected$height / 100) ^ 2)
+clinical_selected$age <- -clinical_selected$days_to_birth / 365.25
+```
+
+选取BMI >= 30的患者
+```{r}
+clinical_selected <- clinical_selected[clinical_selected$BMI >= 30,]
+```
+
+提取 snv_data_table$Tumor_Sample_Barcode 的前缀部分 (例如 TCGA-GU-AATP 中的 TCGA-GU-AATP)
+```{r}
+snv_data_table$Patient_Barcode <- substr(snv_data_table$Tumor_Sample_Barcode, 1, 12)
+```
+
+合并临床数据和 SNV 数据
+```{r}
+merged_data <- merge(snv_data_table, clinical_selected, by.x = "Patient_Barcode", by.y = "id")
+```
+
+筛选非同义突变数据
+```{r}
+non_synonymous_data <- merged_data[merged_data$Variant_Classification %in% c("Missense_Mutation", "Nonsense_Mutation", "Frame_Shift_Del", "Frame_Shift_Ins", "Nonstop_Mutation"), ]
+```
+
+使用maftools的read.maf函数读取突变数据
+```{r}
+maf <- read.maf(maf = non_synonymous_data)
+```
+
+```{r}
+library(data.table)
+```
+
+创建带有BMI、年龄分类和性别的临床数据
+```{r}
+sample_annotations <- data.table(
+  Tumor_Sample_Barcode = snv_data_table$Tumor_Sample_Barcode,  # 用来匹配SNV数据
+  BMI_category = cut(clinical_selected$BMI, breaks = c(-Inf, 25, 30, Inf), labels = c("Under 25", "25-30", "Over 30")),
+  age_category = cut(clinical_selected$age, breaks = c(-Inf, 40, 60, Inf), labels = c("Under 40", "40-60", "Over 60")),
+  gender = clinical_selected$gender
+)
+```
+
+合并临床特征数据
+使用 maftools 读取突变数据，并同时传入临床注释数据
+```{r}
+maf <- read.maf(
+  maf = non_synonymous_data,
+  clinicalData = sample_annotations  # 直接作为 clinicalData 参数传递
+)
+```
+
+定义颜色映射
+```{r}
+annotation_colors <- list(
+  BMI_category = c("Under 25" = "#94BBAD", "25-30" = "#D8AC3A", "Over 30" = "#D74E52"),
+  age_category = c("Under 40" = "blue", "40-60" = "yellow", "Over 60" = "purple"),
+  gender = c("MALE" = "pink", "FEMALE" = "lightblue")
+)
+```
+
+绘制图形
+```{r BLCA_oncoplot_over30}
+oncoplot(
+  maf = maf,
+  top = 50,
+  clinicalFeatures = c("BMI_category", "age_category", "gender"),
+  annotationColor = annotation_colors,
+  fontSize = 0.3
+)
+```
+
+查看数据
+```{r}
+gene_stats <- getGeneSummary(maf)
+top3_genes <- gene_stats[order(-gene_stats$MutatedSamples), ][1:3, ]
+n_samples <- nrow(maf@variants.per.sample)
+library(dplyr)
+top3_genes <- top3_genes %>%
+  mutate(Point_Mutation = Missense_Mutation + Nonsense_Mutation + Nonstop_Mutation,
+         mutation_freq = round(MutatedSamples / n_samples,2)) %>%
+  select(Hugo_Symbol,MutatedSamples,mutation_freq,total,Point_Mutation,Frame_Shift_Ins,Frame_Shift_Del)
+print(top3_genes)
+```
+
+```{r}
+timestamp()
+```
+
