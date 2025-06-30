@@ -1,0 +1,33 @@
+---
+title: "TCGA-UVM Seg"
+author: "Sicheng Xu"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,message=FALSE}
+timestamp()
+library(TCGAbiolinks)
+proj = "TCGA-UVM"
+
+query_CNV <- GDCquery(
+  project = proj,
+  data.category = "Copy Number Variation",
+  data.type = "Copy Number Segment"
+)
+CNV <- GDCprepare(
+  query = query_CNV,
+  save = TRUE,
+  save.filename = paste0(proj,"CNV.rda")
+)
+CNV <- CNV[,c('Sample','Chromosome','Start','End','Num_Probes','Segment_Mean')]
+CNV <- CNV[substr(CNV$Sample,14,15) == "01",]
+write.table(CNV,file = paste0(proj,"_seg.txt"),sep = "\t",col.names = TRUE,
+            row.names = FALSE)
+
+timestamp()
+```
